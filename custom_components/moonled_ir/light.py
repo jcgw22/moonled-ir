@@ -1,25 +1,28 @@
-"""Light platform for the moonLedRemote moon lamp via an ESPHome IR blaster.
+"""Light platform for the moonLedRemote moon lamp via HA's core `infrared`.
 
 This is a hand-built variant of Home Assistant core's `led_infrared`
 integration (see README.md) for one specific 24-key RGB LED remote whose
 top-row function keys don't match the standard layout -- see
 HANDOFF-moonled-ir-mate.md for how each command byte was verified.
 
-Unlike led_infrared's ColorMode.ONOFF + effect-list approach, this models
-the lamp as a real RGB + brightness light: colour buttons map to
-ColorMode.RGB (nearest-match on requested RGB), and the two relative
-brightness buttons are exposed as a 4-level brightness attribute via a
-calibrate-then-step hack -- see MoonLedIrLight._async_set_level.
+Like led_infrared, this sends commands through an `infrared.*` emitter
+entity (InfraredEmitterConsumerEntity) using the standard NEC encoder --
+no bespoke ESPHome service needed, just the `ir_rf_proxy` platform on the
+IR Mate node. Unlike led_infrared's ColorMode.ONOFF + effect-list
+approach, this models the lamp as a real RGB + brightness light: colour
+buttons map to ColorMode.RGB (nearest-match on requested RGB), and the two
+relative brightness buttons are exposed as a 4-level brightness attribute
+via a calibrate-then-step hack -- see MoonLedIrLight._async_set_level.
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components.infrared import InfraredEmitterConsumerEntity
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_EFFECT,
@@ -32,6 +35,7 @@ from homeassistant.components.light import (
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
@@ -44,22 +48,20 @@ from .const import (
     COLORS,
     CONF_ADDRESS,
     CONF_CARRIER_FREQUENCY,
+    CONF_INFRARED_ENTITY_ID,
     CONF_REPEAT_COUNT,
-    CONF_SEND_SERVICE,
     DEFAULT_ADDRESS,
     DEFAULT_CARRIER_FREQUENCY,
     DEFAULT_NAME,
     DEFAULT_REPEAT_COUNT,
+    DOMAIN,
     EFFECTS,
-    FRAME_PERIOD_US,
 )
 from .protocol import build_command
 
-_LOGGER = logging.getLogger(__name__)
-
 PLATFORM_SCHEMA = LIGHT_PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_SEND_SERVICE): cv.string,
+        vol.Required(CONF_INFRARED_ENTITY_ID): cv.entity_id,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): cv.positive_int,
         vol.Optional(
@@ -89,16 +91,16 @@ async def async_setup_platform(
     async_add_entities([MoonLedIrLight(config)])
 
 
-class MoonLedIrLight(LightEntity):
-    """A moonLedRemote-controlled lamp, driven by raw NEC IR sends.
+class MoonLedIrLight(InfraredEmitterConsumerEntity, LightEntity):
+    """A moonLedRemote-controlled lamp, sent via an `infrared` emitter entity.
 
-    assumed_state: there is no feedback path from the lamp (it's a bare IR
-    receiver), so every attribute here is Home Assistant's best guess based
-    on what it has sent. Using the physical remote in parallel will drift
-    this entity's state until the next command re-syncs it.
+    assumed_state: there is no feedback path from the lamp itself (only the
+    IR Mate's receiver, which isn't wired to this entity), so every
+    attribute here is Home Assistant's best guess based on what it has
+    sent. Using the physical remote in parallel will drift this entity's
+    state until the next command re-syncs it.
     """
 
-    _attr_should_poll = False
     _attr_assumed_state = True
     _attr_supported_color_modes = {ColorMode.RGB}
     _attr_color_mode = ColorMode.RGB
@@ -111,16 +113,13 @@ class MoonLedIrLight(LightEntity):
         self._attr_unique_id = (
             f"moonled_ir_{config[CONF_NAME].lower().replace(' ', '_')}"
         )
-        send_domain, _, send_service = config[CONF_SEND_SERVICE].partition(".")
-        self._send_domain = send_domain
-        self._send_service = send_service
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._attr_unique_id)}, name=config[CONF_NAME]
+        )
+        self._infrared_emitter_entity_id = config[CONF_INFRARED_ENTITY_ID]
         self._address = config[CONF_ADDRESS]
         self._carrier_frequency = config[CONF_CARRIER_FREQUENCY]
         self._repeat_count = config[CONF_REPEAT_COUNT]
-        # Time for one send_array() transmission to fully clear the RMT
-        # transmitter before the next one starts, so repeated presses
-        # (e.g. multiple brightness steps) don't collide on the wire.
-        self._send_duration = self._repeat_count * FRAME_PERIOD_US / 1_000_000 + 0.05
 
         self._attr_is_on = False
         self._attr_rgb_color = next(iter(COLORS.values()))
@@ -130,16 +129,20 @@ class MoonLedIrLight(LightEntity):
         self._level: int | None = None
         self._attr_brightness = LEVEL_TO_BRIGHTNESS[BRIGHTNESS_LEVELS]
 
-    async def _async_send(self, command: int) -> None:
-        """Send one IR button press and wait for it to fully transmit."""
-        raw = build_command(command, self._address, self._repeat_count)
-        await self.hass.services.async_call(
-            self._send_domain,
-            self._send_service,
-            {"command": raw, "carrier_frequency": self._carrier_frequency},
-            blocking=True,
+    async def _async_send(self, command_byte: int) -> None:
+        """Send one IR button press and wait for it to fully transmit.
+
+        The underlying remote_transmitter is non_blocking, so back-to-back
+        sends (e.g. several brightness steps) can otherwise overlap on the
+        RMT peripheral -- wait out the command's own duration before the
+        next one.
+        """
+        command = build_command(
+            command_byte, self._address, self._repeat_count, self._carrier_frequency
         )
-        await asyncio.sleep(self._send_duration)
+        duration = sum(abs(t) for t in command.get_raw_timings()) / 1_000_000
+        await self._send_command(command)
+        await asyncio.sleep(duration + 0.05)
 
     async def _async_set_level(self, target: int) -> None:
         """Step the lamp's relative brightness to `target` (1..N).
@@ -155,9 +158,9 @@ class MoonLedIrLight(LightEntity):
             self._level = 1
 
         delta = target - self._level
-        command = CMD_BRIGHTNESS_UP if delta > 0 else CMD_BRIGHTNESS_DOWN
+        command_byte = CMD_BRIGHTNESS_UP if delta > 0 else CMD_BRIGHTNESS_DOWN
         for _ in range(abs(delta)):
-            await self._async_send(command)
+            await self._async_send(command_byte)
         self._level = target
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -172,13 +175,13 @@ class MoonLedIrLight(LightEntity):
 
         if ATTR_RGB_COLOR in kwargs:
             requested = kwargs[ATTR_RGB_COLOR]
-            command, matched = min(
+            command_byte, matched = min(
                 COLORS.items(),
                 key=lambda item: sum(
                     (a - b) ** 2 for a, b in zip(item[1], requested)
                 ),
             )
-            await self._async_send(command)
+            await self._async_send(command_byte)
             self._attr_rgb_color = matched
             self._attr_effect = None
 

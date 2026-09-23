@@ -2,8 +2,9 @@
 
 A Home Assistant custom `light` integration for one specific unlabelled
 24-key RGB LED remote (product name `moonLedRemote`, an IR-controlled moon
-lamp), built entirely around a Seeed XIAO ESP32C3 running ESPHome as a
-raw IR blaster (no HA core `remote`/`infrared` platform involved).
+lamp), controlled through a Seeed XIAO ESP32C3 running ESPHome's native
+`infrared` platform (`ir_rf_proxy`) — the same core `infrared`/NEC stack
+HA's own `led_infrared` uses.
 
 This is a **hack repo for one device**, not a general-purpose IR light
 integration. Every command byte below came from directly capturing this
@@ -15,32 +16,66 @@ investigation log.
 
 HA core's [`led_infrared`](https://github.com/home-assistant/core/tree/dev/homeassistant/components/led_infrared)
 integration is built for exactly this class of remote (it even uses the
-same 24-key protocol table this lamp matches), but it doesn't fit here for
-two reasons:
+same 24-key protocol table this lamp matches) and this repo now sits on
+top of the same `infrared` domain and `infrared_protocols.NECCommand`
+encoder it uses. The one thing it doesn't do is fit this specific lamp's
+remote:
 
-1. It depends on HA core's new `infrared` integration/domain (emitter and
-   receiver entities), which this setup doesn't have — IR is sent via a
-   plain ESPHome custom service (`esphome.xiao_ir_mate_7c8798_send_raw_command`)
-   on the XIAO IR Mate, not a `remote.*`/`infrared.*` entity.
-2. It deliberately models the light as `ColorMode.ONOFF` + an effect list
-   (colours are effects, not real colour). That's a reasonable choice for
-   a protocol-agnostic integration, but this lamp's remote has genuine
-   colour buttons *and* two relative brightness buttons with 4 physical
-   steps, so this hack models it as a real `ColorMode.RGB` light with a
-   4-level brightness attribute instead.
+- `led_infrared` deliberately models the light as `ColorMode.ONOFF` + an
+  effect list (colours are effects, not real colour) — a reasonable
+  protocol-agnostic choice, but this lamp's remote has genuine colour
+  buttons *and* two relative brightness buttons with 4 physical steps. So
+  this hack models it as a real `ColorMode.RGB` light with a 4-level
+  brightness attribute instead (see below).
+- This lamp's top-row function keys (power, brightness, effects) don't
+  match the standard 24-key layout `led_infrared` assumes, and several are
+  still unconfirmed predictions (see the tables below) — not something a
+  general-purpose integration could hardcode.
 
-The architecture (`const.py` protocol table + entity split) is deliberately
-modelled on `led_infrared`'s `entity.py`/`light.py` split, just swapped to
-talk to an ESPHome service and to expose real colour + brightness.
+The architecture (`const.py` protocol table + `light.py` entity) is
+deliberately modelled on `led_infrared`'s `entity.py`/`light.py` split.
+
+## Requires: `ir_rf_proxy` on the IR Mate node
+
+This integration sends commands through an `infrared.*` **emitter**
+entity via `InfraredEmitterConsumerEntity` (same base class
+`led_infrared` uses) — it does **not** call any bespoke ESPHome service.
+The XIAO IR Mate node needs ESPHome's
+[`ir_rf_proxy`](https://esphome.io/components/infrared.html) platform
+added under `infrared:`, wrapping its existing `remote_transmitter`:
+
+```yaml
+remote_transmitter:
+  id: my_transmitter
+  pin: GPIO3
+  carrier_duty_percent: 50%   # must NOT be 0% or 100%
+  non_blocking: true
+
+infrared:
+  - platform: ir_rf_proxy
+    name: IR Proxy Transmitter
+    id: ir_proxy_tx
+    remote_transmitter_id: my_transmitter
+  # optional, if the node also has a remote_receiver:
+  - platform: ir_rf_proxy
+    name: IR Proxy Receiver
+    id: ir_proxy_rx
+    remote_receiver_id: rcvr
+```
+
+Once flashed, this creates an `infrared.<device>_ir_proxy_transmitter`
+entity in HA — that's what `infrared_entity_id` in this light's config
+points at. (The living-room XIAO IR Mate's own `xiao-ir-mate-7c8798.yaml`
+already has this block added; it just needs reflashing.)
 
 ## How sending works
 
 The lamp **never commits an isolated NEC frame** — it only commits after
 seeing the repeat sequence a real button press produces. The confirmed
-working format (`protocol.py`) is:
+working format is:
 
 ```
-canonical NEC frame + 41095 us gap + 3 repeat bursts at 108 ms spacing
+canonical NEC frame + 3 repeat bursts at ~108 ms spacing
 ```
 
 This was reverse-engineered by making the IR Mate's own receiver capture
@@ -48,28 +83,39 @@ its own transmissions (and real remote presses) — see the handoff's
 "measurement rig" section. One repeat burst is confirmed **not** enough;
 three is what a real button press measured, and is the default here.
 
-Each send takes ~330 ms to fully clear the transmitter
-(`repeat_count * 108 ms`); the entity awaits that before the next command,
-so rapid successive calls (e.g. several brightness steps) don't collide on
-the ESPHome RMT peripheral.
+`protocol.py` builds this via `infrared_protocols.commands.nec.NECCommand`
+(HA core's own NEC encoder — the same one `led_infrared` uses), passing
+`repeat_count=3`. Its `get_raw_timings()` embeds 3 repeat bursts directly
+into the returned array; verified byte-for-byte equivalent to this repo's
+original hand-rolled encoder (see `protocol.py`'s docstring). There's no
+reason to maintain a second NEC implementation once the real one is
+reachable.
+
+Each send takes ~330 ms to fully clear the transmitter; the entity awaits
+that before the next command, so rapid successive calls (e.g. several
+brightness steps) don't collide on the ESPHome RMT peripheral — the
+underlying `remote_transmitter` is `non_blocking: true`.
 
 ## Installation
 
-1. Copy `custom_components/moonled_ir/` into your Home Assistant
+1. Add the `ir_rf_proxy` block above to the IR Mate node's ESPHome YAML
+   (already done for `xiao-ir-mate-7c8798.yaml`) and flash it. Confirm the
+   new `infrared.*_ir_proxy_transmitter` entity appears in HA.
+2. Copy `custom_components/moonled_ir/` into your Home Assistant
    `config/custom_components/` directory (or add this repo as a HACS
    custom repository — category "Integration").
-2. Add a `light:` entry, see `example_configuration.yaml`:
+3. Add a `light:` entry, see `example_configuration.yaml`:
 
    ```yaml
    light:
      - platform: moonled_ir
        name: Moon Lamp
-       send_service: esphome.xiao_ir_mate_7c8798_send_raw_command
+       infrared_entity_id: infrared.living_room_liv_ir_mate_ir_proxy_transmitter
    ```
 
-   `send_service` is the ESPHome raw-send service exposed by your IR
-   blaster node, as `domain.service`.
-3. Restart Home Assistant.
+   Check Developer Tools → States for the exact entity_id once the node's
+   been reflashed — HA generates it from the device + entity name.
+4. Restart Home Assistant.
 
 No config flow / UI setup — this is YAML-only by design, so tweaking a
 command byte in `const.py` doesn't require re-adding a config entry.
@@ -149,9 +195,19 @@ can drift; there's no way to detect that without feedback hardware.
 ## Credit / references
 
 - [`home-assistant/core` `led_infrared`](https://github.com/home-assistant/core/tree/dev/homeassistant/components/led_infrared) —
-  architecture this hack is modelled on.
+  architecture this hack is modelled on, and the integration this device
+  would use if its function keys matched the standard layout.
+- [`home-assistant/core` `infrared`](https://github.com/home-assistant/core/tree/dev/homeassistant/components/infrared) —
+  the core domain/entity base classes (`InfraredEmitterConsumerEntity`,
+  `async_send_command`) this light sends through.
+- [`esphome/esphome` `ir_rf_proxy`](https://github.com/esphome/esphome/tree/dev/esphome/components/ir_rf_proxy) —
+  the ESPHome platform that exposes a native `infrared.*` emitter/receiver
+  entity backed by `remote_transmitter`/`remote_receiver`, no bespoke
+  service needed.
 - [`home-assistant-libs/infrared-protocols`](https://github.com/home-assistant-libs/infrared-protocols)
-  `infrared_protocols/codes/generic/led/generic_24_key.py` — the standard
-  24-key command table this lamp's colour grid matches.
+  `infrared_protocols/commands/nec.py` (the NEC encoder this light's
+  commands are built with) and
+  `infrared_protocols/codes/generic/led/generic_24_key.py` (the standard
+  24-key command table this lamp's colour grid matches).
 - `HANDOFF-moonled-ir-mate.md` — the full reverse-engineering log,
   measurement rig, and ground-truth table this repo's constants come from.

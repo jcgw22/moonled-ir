@@ -1,10 +1,15 @@
 # Add this under your `light:` block in configuration.yaml, then restart
 # Home Assistant. See README.md for full setup and background.
+#
+# Requires the IR Mate node to have the ir_rf_proxy `infrared:` platform
+# flashed first -- check Developer Tools -> States for the exact
+# infrared_entity_id once it's online (it's generated from the device +
+# entity name).
 
 light:
   - platform: moonled_ir
     name: Moon Lamp
-    send_service: esphome.xiao_ir_mate_7c8798_send_raw_command
+    infrared_entity_id: infrared.living_room_liv_ir_mate_ir_proxy_transmitter
     # Everything below is optional; these are the defaults.
     address: 0xEF00
     carrier_frequency: 38000

@@ -7,11 +7,16 @@ infrared_protocols/codes/generic/led/generic_24_key.py, which is the
 standard 24-key table this lamp's colour grid matches exactly. Only the
 top-row function keys (ON/OFF/brightness/effects) are remapped on this
 particular lamp -- see the per-entry comments below.
+
+Frame timing is no longer hand-rolled here: it's built by
+infrared_protocols.commands.nec.NECCommand, HA core's own NEC encoder
+(see protocol.py's docstring for why its output is confirmed identical to
+the handoff's working format).
 """
 
 DOMAIN = "moonled_ir"
 
-CONF_SEND_SERVICE = "send_service"
+CONF_INFRARED_ENTITY_ID = "infrared_entity_id"
 CONF_ADDRESS = "address"
 CONF_CARRIER_FREQUENCY = "carrier_frequency"
 CONF_REPEAT_COUNT = "repeat_count"
@@ -20,20 +25,6 @@ DEFAULT_NAME = "Moon Lamp"
 DEFAULT_ADDRESS = 0xEF00
 DEFAULT_CARRIER_FREQUENCY = 38000
 DEFAULT_REPEAT_COUNT = 3
-
-# Canonical NEC timings measured directly off a real button press via the
-# IR Mate's own receiver (handoff: "Measured ground truth: a real Red
-# button press"). Do NOT substitute the Broadlink-derived timings from the
-# learned base64 codes -- that decoder's tick constant is ~7-11% long and
-# the lamp will silently ignore the result.
-LEADER_MARK = 9000
-LEADER_SPACE = -4500
-BIT_MARK = 562
-ZERO_SPACE = -562
-ONE_SPACE = -1687
-REPEAT_BURST = [9000, -2250, 562]
-FRAME_PERIOD_US = 108000  # textbook NEC 108 ms leader-to-leader spacing
-MAX_SPACE_US = 30000  # stay under the RMT 15-bit space field (belt-and-braces)
 
 # --- Power ---------------------------------------------------------------
 # Certain, confirmed session 3 by direct observation. Note these do NOT
