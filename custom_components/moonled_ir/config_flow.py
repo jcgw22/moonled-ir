@@ -49,20 +49,32 @@ def _schema(emitter_entity_ids: list[str]) -> probatio.Schema:
                     domain=INFRARED_DOMAIN, include_entities=emitter_entity_ids
                 )
             ),
-            probatio.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): NumberSelector(
-                NumberSelectorConfig(min=0, max=0xFFFF, mode=NumberSelectorMode.BOX)
+            # NumberSelector always returns a float; NECCommand does bitwise
+            # ops on address/command that floats don't support, so coerce
+            # back to int before it lands in entry.data.
+            probatio.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): probatio.All(
+                NumberSelector(
+                    NumberSelectorConfig(min=0, max=0xFFFF, mode=NumberSelectorMode.BOX)
+                ),
+                probatio.Coerce(int),
             ),
             probatio.Optional(
                 CONF_CARRIER_FREQUENCY, default=DEFAULT_CARRIER_FREQUENCY
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=1000, max=100000, mode=NumberSelectorMode.BOX
-                )
+            ): probatio.All(
+                NumberSelector(
+                    NumberSelectorConfig(
+                        min=1000, max=100000, mode=NumberSelectorMode.BOX
+                    )
+                ),
+                probatio.Coerce(int),
             ),
             probatio.Optional(
                 CONF_REPEAT_COUNT, default=DEFAULT_REPEAT_COUNT
-            ): NumberSelector(
-                NumberSelectorConfig(min=1, max=10, mode=NumberSelectorMode.BOX)
+            ): probatio.All(
+                NumberSelector(
+                    NumberSelectorConfig(min=1, max=10, mode=NumberSelectorMode.BOX)
+                ),
+                probatio.Coerce(int),
             ),
         }
     )

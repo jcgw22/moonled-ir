@@ -142,9 +142,13 @@ class MoonLedIrLight(InfraredEmitterConsumerEntity, LightEntity):
             identifiers={(DOMAIN, unique_id)}, name=config[CONF_NAME]
         )
         self._infrared_emitter_entity_id = config[CONF_INFRARED_ENTITY_ID]
-        self._address = config[CONF_ADDRESS]
-        self._carrier_frequency = config[CONF_CARRIER_FREQUENCY]
-        self._repeat_count = config[CONF_REPEAT_COUNT]
+        # int(): the GUI config flow's NumberSelector fields come back as
+        # floats (even for entries created before that was fixed at the
+        # source in config_flow.py) -- NECCommand does bitwise ops on
+        # address/command that floats don't support.
+        self._address = int(config[CONF_ADDRESS])
+        self._carrier_frequency = int(config[CONF_CARRIER_FREQUENCY])
+        self._repeat_count = int(config[CONF_REPEAT_COUNT])
 
         self._attr_is_on = False
         self._attr_rgb_color = next(iter(COLORS.values()))
