@@ -1,5 +1,7 @@
 # 🌙 Moon Lamp IR (moonLedRemote)
 
+<img src="assets/moon-lamp.png" alt="VGAzer Magnetic Levitating Moon Lamp" width="200" align="right">
+
 [![hacs_custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/jcgw22/moonled-ir?include_prereleases)](https://github.com/jcgw22/moonled-ir/releases)
 [![License](https://img.shields.io/github/license/jcgw22/moonled-ir)](LICENSE)
@@ -30,6 +32,7 @@ just an on/off switch with colour "effects" bolted on.
 - [Command reference](#command-reference)
 - [Confidence levels](#confidence-levels)
 - [Contributing / help wanted](#contributing--help-wanted)
+- [Icon](#icon)
 - [Credits](#credits)
 
 ## The lamp
@@ -75,6 +78,10 @@ commands sent by the remote.
 - 📡 Built on Home Assistant core's own `infrared` domain and NEC encoder
   (`infrared_protocols.commands.nec.NECCommand`) — the same stack core's
   `led_infrared` integration uses. No bespoke ESPHome service calls.
+- 🖼️ Ships its own icon (`custom_components/moonled_ir/brand/`) — HA
+  2026.3+ shows local brand images automatically, no
+  `home-assistant/brands` submission needed (see
+  [Icon](#icon) below).
 - 📝 Every command byte's confidence level is documented and traceable
   back to the original reverse-engineering session.
 
@@ -300,6 +307,25 @@ to help tighten up the confidence table:
 
 No code changes needed for most of this — it's all in one dict per
 category.
+
+## Icon
+
+<img src="custom_components/moonled_ir/brand/icon.png" alt="moonled_ir icon" width="96">
+
+The icon shown for this integration in Settings → Devices & Services (and
+in HACS, once installed) is a square crop of the product photo above,
+shipped locally at
+[`custom_components/moonled_ir/brand/`](custom_components/moonled_ir/brand/)
+as `icon.png` (256×256) and `icon@2x.png` (512×512).
+
+As of Home Assistant 2026.3, this is the correct — and only — way for a
+custom integration to provide its own icon: local `brand/` images are
+served automatically and take priority over the CDN, no extra
+configuration needed. Submitting to the separate `home-assistant/brands`
+repository is no longer accepted for custom integrations; new
+`custom_integrations/` PRs there are auto-closed by a bot pointing back
+at this same mechanism (see the
+[announcement](https://developers.home-assistant.io/blog/2026/02/24/brands-proxy-api)).
 
 ## Credits
 
