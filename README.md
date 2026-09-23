@@ -5,10 +5,10 @@
 [![License](https://img.shields.io/github/license/jcgw22/moonled-ir)](LICENSE)
 [![Last Commit](https://img.shields.io/github/last-commit/jcgw22/moonled-ir)](https://github.com/jcgw22/moonled-ir/commits/main)
 
-A Home Assistant custom `light` integration for one specific unlabelled
-24-key RGB LED remote (product name `moonLedRemote`, an IR-controlled moon
-lamp) — a real `ColorMode.RGB` light with 4 brightness steps and effects,
-not just an on/off switch with colour "effects" bolted on.
+A Home Assistant custom `light` integration for the **VGAzer Magnetic
+Levitating Moon Lamp**'s bundled IR remote (internally `moonLedRemote`) —
+a real `ColorMode.RGB` light with 4 brightness steps and effects, not
+just an on/off switch with colour "effects" bolted on.
 
 > [!WARNING]
 > **This is a hack repo for one device, not a general-purpose IR light
@@ -21,6 +21,7 @@ not just an on/off switch with colour "effects" bolted on.
 
 ## Contents
 
+- [The lamp](#the-lamp)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -30,6 +31,36 @@ not just an on/off switch with colour "effects" bolted on.
 - [Confidence levels](#confidence-levels)
 - [Contributing / help wanted](#contributing--help-wanted)
 - [Credits](#credits)
+
+## The lamp
+
+[VGAzer Magnetic Levitating Moon Lamp](https://www.amazon.com/dp/B07H1G1J61)
+— a 3D-printed LED moon sphere that hovers and slowly spins over a
+magnetic base, controlled by the bundled IR remote this repo reverse
+-engineers. Nothing about VGAzer or Amazon is involved in how this repo
+works; it's here purely to identify which physical product these command
+bytes apply to.
+
+| | |
+|---|---|
+| Brand | VGAzer |
+| Material | PLA + ABS |
+| Light control | IR remote (this repo) + touch switch on the base (power only) |
+| Colours | 16 (see [below](#confidence-levels) — this repo exposes 14) |
+| Moon diameter | 5.9 in |
+| Base size | 5.12 × 5.12 × 1.2 in |
+| Power | AC 100–240 V in → DC 12 V 2 A out, 1.5 W draw |
+
+The listing's "16 colors" checks out exactly: the standard 24-key colour
+grid this lamp's remote matches has 16 colour keys, and this repo
+deliberately exposes 14 of them — the other two (`WHITE`/`0x07` and
+`TOMATO`/`0x08`) are excluded because they don't behave as colours on
+this lamp (see [Command reference](#command-reference)).
+
+The base's magnetic levitation, touch power switch, and remote's
+30-minute/60-minute sleep timer buttons are outside this integration's
+scope — this repo only covers the colour/brightness/effect/power IR
+commands sent by the remote.
 
 ## Features
 
