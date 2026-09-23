@@ -104,7 +104,18 @@ underlying `remote_transmitter` is `non_blocking: true`.
 2. Copy `custom_components/moonled_ir/` into your Home Assistant
    `config/custom_components/` directory (or add this repo as a HACS
    custom repository — category "Integration").
-3. Add a `light:` entry, see `example_configuration.yaml`:
+3. Restart Home Assistant.
+4. Set the light up either way — both produce the same entity, and you can
+   mix them across multiple lamps if you ever add a second one:
+
+   **GUI:** Settings → Devices & Services → Add Integration → "Moon Lamp
+   IR (moonLedRemote)". Pick the infrared emitter entity from a dropdown
+   (only entities under the `infrared` domain are offered); address,
+   carrier frequency and repeat count are pre-filled with the confirmed
+   defaults and rarely need changing. Settings can be edited later via the
+   integration's "Reconfigure" option, no YAML edits or restart needed.
+
+   **YAML**, see `example_configuration.yaml`:
 
    ```yaml
    light:
@@ -113,12 +124,9 @@ underlying `remote_transmitter` is `non_blocking: true`.
        infrared_entity_id: infrared.living_room_liv_ir_mate_ir_proxy_transmitter
    ```
 
-   Check Developer Tools → States for the exact entity_id once the node's
-   been reflashed — HA generates it from the device + entity name.
-4. Restart Home Assistant.
-
-No config flow / UI setup — this is YAML-only by design, so tweaking a
-command byte in `const.py` doesn't require re-adding a config entry.
+   Either way, check Developer Tools → States for the exact
+   `infrared.*_ir_proxy_transmitter` entity_id once the node's been
+   reflashed — HA generates it from the device + entity name.
 
 ## What each control does
 

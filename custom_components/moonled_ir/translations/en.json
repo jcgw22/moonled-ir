@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a moonLedRemote moon lamp",
+        "description": "Pick the infrared emitter entity this lamp's IR receiver is in range of (an ir_rf_proxy transmitter on the IR Mate node -- see the repo's README for the ESPHome-side setup this depends on).",
+        "data": {
+          "name": "Name",
+          "infrared_entity_id": "Infrared emitter",
+          "address": "NEC address",
+          "carrier_frequency": "Carrier frequency (Hz)",
+          "repeat_count": "Repeat bursts per command"
+        },
+        "data_description": {
+          "address": "16-bit NEC address, decimal (61184 = 0xEF00, the confirmed value for this lamp).",
+          "carrier_frequency": "IR carrier frequency in Hz. 38000 for this lamp.",
+          "repeat_count": "How many short repeat bursts follow the frame. This lamp needs at least 3 to commit a command -- see HANDOFF-moonled-ir-mate.md."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure moon lamp",
+        "data": {
+          "name": "Name",
+          "infrared_entity_id": "Infrared emitter",
+          "address": "NEC address",
+          "carrier_frequency": "Carrier frequency (Hz)",
+          "repeat_count": "Repeat bursts per command"
+        }
+      }
+    },
+    "abort": {
+      "no_infrared_emitters": "No infrared emitter entities found. Set up an ir_rf_proxy (or other infrared) emitter first.",
+      "already_configured": "This infrared emitter is already configured as a moon lamp.",
+      "reconfigure_successful": "Re-configured successfully."
+    }
+  }
+}

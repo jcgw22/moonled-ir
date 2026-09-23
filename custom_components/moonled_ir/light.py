@@ -13,6 +13,10 @@ approach, this models the lamp as a real RGB + brightness light: colour
 buttons map to ColorMode.RGB (nearest-match on requested RGB), and the two
 relative brightness buttons are exposed as a 4-level brightness attribute
 via a calibrate-then-step hack -- see MoonLedIrLight._async_set_level.
+
+Settable via YAML (PLATFORM_SCHEMA/async_setup_platform) or the UI
+(config_flow.py/async_setup_entry) -- both end up calling the same
+MoonLedIrLight constructor with a plain mapping of the same keys.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import voluptuous as vol
+import probatio
 
 from homeassistant.components.infrared import InfraredEmitterConsumerEntity
 from homeassistant.components.light import (
@@ -32,11 +36,15 @@ from homeassistant.components.light import (
     LightEntity,
     LightEntityFeature,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import (
+    AddConfigEntryEntitiesCallback,
+    AddEntitiesCallback,
+)
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
@@ -59,15 +67,17 @@ from .const import (
 )
 from .protocol import build_command
 
+# NOTE: voluptuous was renamed probatio in HA core; `probatio.Required` /
+# `probatio.Optional` are the same API voluptuous had, just reimported.
 PLATFORM_SCHEMA = LIGHT_PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_INFRARED_ENTITY_ID): cv.entity_id,
-        vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): cv.positive_int,
-        vol.Optional(
+        probatio.Required(CONF_INFRARED_ENTITY_ID): cv.entity_id,
+        probatio.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        probatio.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): cv.positive_int,
+        probatio.Optional(
             CONF_CARRIER_FREQUENCY, default=DEFAULT_CARRIER_FREQUENCY
         ): cv.positive_int,
-        vol.Optional(
+        probatio.Optional(
             CONF_REPEAT_COUNT, default=DEFAULT_REPEAT_COUNT
         ): cv.positive_int,
     }
@@ -88,7 +98,19 @@ async def async_setup_platform(
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Set up the moonLedRemote light from YAML."""
-    async_add_entities([MoonLedIrLight(config)])
+    name = config[CONF_NAME]
+    async_add_entities(
+        [MoonLedIrLight(config, unique_id=f"moonled_ir_{name.lower().replace(' ', '_')}")]
+    )
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the moonLedRemote light from a config entry (the GUI flow)."""
+    async_add_entities([MoonLedIrLight(entry.data, unique_id=entry.entry_id)])
 
 
 class MoonLedIrLight(InfraredEmitterConsumerEntity, LightEntity):
@@ -107,14 +129,17 @@ class MoonLedIrLight(InfraredEmitterConsumerEntity, LightEntity):
     _attr_supported_features = LightEntityFeature.EFFECT
     _attr_effect_list = list(EFFECTS)
 
-    def __init__(self, config: ConfigType) -> None:
-        """Initialize the entity from YAML config."""
+    def __init__(self, config: ConfigType, unique_id: str) -> None:
+        """Initialize the entity from a YAML or config-entry mapping.
+
+        `unique_id` is passed in rather than derived from the name, since a
+        config-entry-created entity must key off the entry's own (renameable
+        -safe) entry_id, not the user-visible name.
+        """
         self._attr_name = config[CONF_NAME]
-        self._attr_unique_id = (
-            f"moonled_ir_{config[CONF_NAME].lower().replace(' ', '_')}"
-        )
+        self._attr_unique_id = unique_id
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._attr_unique_id)}, name=config[CONF_NAME]
+            identifiers={(DOMAIN, unique_id)}, name=config[CONF_NAME]
         )
         self._infrared_emitter_entity_id = config[CONF_INFRARED_ENTITY_ID]
         self._address = config[CONF_ADDRESS]
