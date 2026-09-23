@@ -1,0 +1,11 @@
+# Add this under your `light:` block in configuration.yaml, then restart
+# Home Assistant. See README.md for full setup and background.
+
+light:
+  - platform: moonled_ir
+    name: Moon Lamp
+    send_service: esphome.xiao_ir_mate_7c8798_send_raw_command
+    # Everything below is optional; these are the defaults.
+    address: 0xEF00
+    carrier_frequency: 38000
+    repeat_count: 3

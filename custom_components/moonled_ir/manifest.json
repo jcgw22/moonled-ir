@@ -1,0 +1,10 @@
+{
+  "domain": "moonled_ir",
+  "name": "Moon Lamp IR (moonLedRemote)",
+  "codeowners": ["@jcgw22"],
+  "documentation": "https://github.com/jcgw22/moonled-ir",
+  "iot_class": "assumed_state",
+  "issue_tracker": "https://github.com/jcgw22/moonled-ir/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
